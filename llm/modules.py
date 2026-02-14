@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from typing import Tuple
+from typing import Tuple, Optional
 
 
 class RMSNorm(nn.Module):
@@ -61,7 +61,7 @@ class GroupedQueryAttention(nn.Module):
             dim_in: int,
             num_heads: int,
             num_kv_groups: int,
-            head_dim: int = None,
+            head_dim: Optional[int] = None,
             qk_norm: bool = False
     ) -> None:
         super().__init__()
@@ -102,8 +102,8 @@ class GroupedQueryAttention(nn.Module):
             cos: torch.Tensor,
             sin: torch.Tensor, 
             start_pos: int = 0,
-            kv_cache: Tuple[torch.Tensor, torch.Tensor] = None
-    ) -> torch.Tensor:
+            kv_cache: Optional[Tuple[torch.Tensor, torch.Tensor]] = None
+    ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         batch_size, num_tokens, _ = x.shape
 
         # Get Q, K, V matricies
@@ -262,7 +262,7 @@ class MultiHeadSelfAttention(GroupedQueryAttention):
             self, 
             dim_in: int, 
             num_heads: int,
-            head_dim: int = None, 
+            head_dim: Optional[int] = None, 
             qk_norm: bool = False
     ) -> None:
         super().__init__(
@@ -293,7 +293,7 @@ class MultiQueryAttention(GroupedQueryAttention):
             self, 
             dim_in: int, 
             num_heads: int, 
-            head_dim: int = None, 
+            head_dim: Optional[int] = None, 
             qk_norm: bool = False
         ) -> None:
         super().__init__(
@@ -330,7 +330,7 @@ class FeedForwardNet(nn.Module):
 
         self.fc1 = nn.Linear(dim_in, hidden_dim, bias=False)
         self.fc2 = nn.Linear(dim_in, hidden_dim, bias=False)
-        self.fc_out = nn.Linear(hidden_dim, dim_out, bias=False)
+        self.fc_out = nn.Linear(hidden_dim, dim_in, bias=False)
         
         match activation_fn:
             case "silu":
@@ -348,6 +348,32 @@ class FeedForwardNet(nn.Module):
         x2 = self.fc2(x)
         x = self.act_fn(x1) * x2
         return self.fc_out(x)
+
+class MoEFeedForwardNet(nn.Module):
+    """
+    Mixture-of-Experts (MoE) layer implementation.
+    Args:
+        ...
+    Returns:
+        ...
+    """
+    def __init__(
+            self, 
+            num_experts: int, 
+            num_experts_per_token: int, 
+            dim_in: int,
+            moe_hidden_dim: int
+    ) -> None:
+        super().__init__()
+        self.num_experts = num_experts
+        self.num_experts_per_token = num_experts_per_token
+        self.dim_in = dim_in
+        self.moe_hidden_dim = moe_hidden_dim
+        self.gate = nn.Linear(dim_in, moe_hidden_dim, bias=False)
+
+    
+    def forward(self, x: torch.Tensor):
+        pass
 
 class TransformerBlock(nn.Module):
     def __init__(self, config) -> None:
@@ -368,8 +394,13 @@ class TransformerBlock(nn.Module):
         match config.ffn_type:
             case "Dense":
                 self.ffn = FeedForwardNet(**config.ffn)
+            case "MoE":
+                self.ffn = MoEFeedForwardNet(**config.ffn)
             case _:
-                raise ValueError(f"Unsupported FFN type: {config.ffn_type}.")
+                raise ValueError(
+                    f"Unsupported FFN type: {config.ffn_type}. "
+                    f"Please, choose between 'Dense' and 'MoE'."
+                )
         self.norm1 = RMSNorm(
             emb_dim=config.norm["embedding_dim"], 
             eps=config.norm["epsilon"],
@@ -388,7 +419,7 @@ class TransformerBlock(nn.Module):
             cos: torch.Tensor,
             sin: torch.Tensor,
             start_pos: int = 0,
-            kv_cache: Tuple[torch.Tensor, torch.Tensor] = None
+            kv_cache: Optional[Tuple[torch.Tensor, torch.Tensor]] = None
     ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         residual = x
         x = self.norm1(x)
