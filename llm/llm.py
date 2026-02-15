@@ -1,10 +1,11 @@
 import torch
 import torch.nn as nn
+from omegaconf import DictConfig
 from .modules import TransformerBlock, RMSNorm, compute_rope_params
 
 
 class LLM(nn.Module):
-    def __init__(self, config) -> None:
+    def __init__(self, config: DictConfig) -> None:
         self.tok_embed = nn.Embedding(config["vocab_size"], config["emb_dim"])
         self.trsf_blocks = nn.ModuleList(
             [

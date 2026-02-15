@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from typing import Tuple, Optional
+from omegaconf import DictConfig
 
 
 class RMSNorm(nn.Module):
@@ -375,7 +376,7 @@ class MoEFeedForwardNet(nn.Module):
         pass
 
 class TransformerBlock(nn.Module):
-    def __init__(self, config) -> None:
+    def __init__(self, config: DictConfig) -> None:
         super().__init__()
         match config.attention_type:
             case "MHSA":
