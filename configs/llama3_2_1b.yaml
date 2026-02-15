@@ -24,5 +24,3 @@ rope:
   head_dim: 64
   theta_base: 500_000.0
   context_length: 131_072
-
-

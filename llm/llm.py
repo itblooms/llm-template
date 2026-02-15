@@ -6,6 +6,7 @@ from .modules import TransformerBlock, RMSNorm, compute_rope_params
 
 class LLM(nn.Module):
     def __init__(self, config: DictConfig) -> None:
+        super().__init__()
         self.tok_embed = nn.Embedding(config["vocab_size"], config["emb_dim"])
         self.trsf_blocks = nn.ModuleList(
             [
