@@ -1,0 +1,28 @@
+vocab_size: 128_256
+emb_dim: 2048
+num_blocks: 16
+
+norm:
+  emb_dim: 2048
+  eps: 1e-5
+  bias: False
+
+attention_type: "GQA"
+attention:
+  dim_in: 2048
+  num_heads: 32
+  num_kv_groups: 8
+  head_dim: None
+
+ffn_type: "Dense"
+fff:
+  dim_in: 2048
+  hidden_dim: 8192
+  activation_fn: "silu"
+
+rope:
+  head_dim: 64
+  theta_base: 500_000.0
+  context_length: 131_072
+
+
