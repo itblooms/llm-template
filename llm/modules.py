@@ -153,49 +153,6 @@ class GroupedQueryAttention(nn.Module):
         #  N_h * D stands for concatenation from all heads
         output = (attn_weights @ values).transpose(1, 2).reshape(batch_size, num_tokens, self.dim_out)
         return self.out_proj(output), next_kv_cache
-    
-    # TODO Move to llm/llm.py
-    # Use https://nn.labml.ai/transformers/rope/index.html as a reference to understand details
-    @staticmethod
-    def compute_rope_params(
-        head_dim: int,
-        theta_base: int = 10_000,
-        context_length: int = 4096
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Precomputes sine and cosine tables for each token position and 
-        each i in [1, 2, ..., head_dim / 2]. Parameter i is a coordinate of 
-        embedding inside attention layer.
-
-        Args:
-            head_dim (int): Embeddings dimension inside attention layer.
-            theta_base (int): Base used to calculate theta_i's used in RoPE's rotation matrix.
-                Note: theta_base ^ {-2 * (i - 1) / head_dim} for i in [1, 2, ..., head_dim / 2]
-            context_length (int): Context window of a model, i.e., how much tokens can be processed at once.
-        Returns:
-            Tuple[torch.Tensor, torch.Tensor]: Final tables of sines and cosines. 
-
-        Notes: 
-            m's rows in sine and cosine tables are calculated with the following arguments:
-                [m*theta_0, m*theta_1, ..., m*theta_{head_dim/2}, m*theta_0, m*theta_1, ..., m*theta_{head_dim/2}]
-            Check this explanation for further explanations: 
-                https://nn.labml.ai/transformers/rope/index.html
-        """
-        if head_dim % 2 != 0:
-            raise ValueError(
-                f"Head dimension must be even, but you have head_dim = {head_dim}"
-            )
-        # theta_i angles, for i in [1, 2, ..., head_dim / 2]. theta_i = 10000^(-2 * (i-1) / d)
-        theta = 1. / theta_base ** (torch.arange(0, head_dim // 2, 2) / head_dim)
-        positions = torch.arange(context_length)  # Token positions
-        angles = positions.unsqueeze(1) * theta.unsqueeze(0)  # [context_length, head_dim // 2]
-        # Total table of angles
-        angles = torch.cat([angles, angles], dim=1)  # [context_length, head_dim]
-
-        # Compute sines and cosines tables for further final calculations of RoPE
-        cos = torch.cos(angles)
-        sin = torch.sin(angles)
-        return cos, sin
 
     @staticmethod
     def apply_rope(
@@ -241,6 +198,48 @@ class GroupedQueryAttention(nn.Module):
         rotated_x = torch.cat([-x2, x1], dim=-1)  # x rotated by 90 degree
         roped_x = (x * cos) + (rotated_x * sin)
         return roped_x
+
+# TODO Move to llm/llm.py
+# Use https://nn.labml.ai/transformers/rope/index.html as a reference to understand details
+def compute_rope_params(
+    head_dim: int,
+    theta_base: int = 10_000,
+    context_length: int = 4096
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Precomputes sine and cosine tables for each token position and 
+    each i in [1, 2, ..., head_dim / 2]. Parameter i is a coordinate of 
+    embedding inside attention layer.
+
+    Args:
+        head_dim (int): Embeddings dimension inside attention layer.
+        theta_base (int): Base used to calculate theta_i's used in RoPE's rotation matrix.
+            Note: theta_base ^ {-2 * (i - 1) / head_dim} for i in [1, 2, ..., head_dim / 2]
+        context_length (int): Context window of a model, i.e., how much tokens can be processed at once.
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]: Final tables of sines and cosines. 
+
+    Notes: 
+        m's rows in sine and cosine tables are calculated with the following arguments:
+            [m*theta_0, m*theta_1, ..., m*theta_{head_dim/2}, m*theta_0, m*theta_1, ..., m*theta_{head_dim/2}]
+        Check this explanation for further explanations: 
+            https://nn.labml.ai/transformers/rope/index.html
+    """
+    if head_dim % 2 != 0:
+        raise ValueError(
+        f"Head dimension must be even, but you have head_dim = {head_dim}"
+        )
+    # theta_i angles, for i in [1, 2, ..., head_dim / 2]. theta_i = 10000^(-2 * (i-1) / d)
+    theta = 1. / theta_base ** (torch.arange(0, head_dim // 2, 2) / head_dim)
+    positions = torch.arange(context_length)  # Token positions
+    angles = positions.unsqueeze(1) * theta.unsqueeze(0)  # [context_length, head_dim // 2]
+    # Total table of angles
+    angles = torch.cat([angles, angles], dim=1)  # [context_length, head_dim]
+
+    # Compute sines and cosines tables for further final calculations of RoPE
+    cos = torch.cos(angles)
+    sin = torch.sin(angles)
+    return cos, sin
     
 class MultiHeadSelfAttention(GroupedQueryAttention):
     """
